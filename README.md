@@ -18,6 +18,7 @@ The Firestore rules (`firestore.rules`) allow a user to read and write only unde
 
 ## Screenshots
 ![Login](screenshots/login.png)
-![My data in Firestore](screenshots/console.png)
-![Live update](screenshots/live.png)
-![Second account sees nothing of mine](screenshots/denied.png)
+![My data in Firestore](screenshots/all_transactions.png)
+![New update](screenshots/new_transaction.png)
+![Incomings](screenshots/income.png)
+![Expenses](screenshots/expenses.png)
