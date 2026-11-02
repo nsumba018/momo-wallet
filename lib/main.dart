@@ -2,7 +2,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
-import 'auth_gate.dart';
+import 'screens/auth_gate.dart';
 import 'firebase_web_options.dart';
 
 Future<void> main() async {

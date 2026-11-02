@@ -2,7 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-import 'txn.dart';
+import '../models/txn.dart';
 import 'txn_form.dart';
 
 class WalletScreen extends StatefulWidget {

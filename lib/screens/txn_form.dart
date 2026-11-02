@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
-import 'txn.dart';
+import '../models/txn.dart';
 
 // Add a new transaction, or edit one (when txn is given).
 class TxnForm extends StatefulWidget {
