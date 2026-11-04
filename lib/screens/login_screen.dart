@@ -1,7 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
-import '../models/txn.dart';
+import '../repositories/txn_repository.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -34,12 +34,16 @@ class _LoginScreenState extends State<LoginScreen> {
       final auth = FirebaseAuth.instance;
       if (newAccount) {
         await auth.createUserWithEmailAndPassword(
-            email: _email.text.trim(), password: _password.text);
+          email: _email.text.trim(),
+          password: _password.text,
+        );
         // Every new account starts with its own sample transactions.
-        await addSampleTransactions();
+        await TxnRepository(auth.currentUser!.uid).addSamples();
       } else {
         await auth.signInWithEmailAndPassword(
-            email: _email.text.trim(), password: _password.text);
+          email: _email.text.trim(),
+          password: _password.text,
+        );
       }
     } on FirebaseAuthException catch (e) {
       setState(() => _error = _message(e.code));
@@ -78,19 +82,24 @@ class _LoginScreenState extends State<LoginScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text('MoMo Wallet',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
+                const Text(
+                  'MoMo Wallet',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 32),
                 TextFormField(
                   controller: _email,
                   keyboardType: TextInputType.emailAddress,
                   decoration: const InputDecoration(
-                      labelText: 'Email', border: OutlineInputBorder()),
+                    labelText: 'Email',
+                    border: OutlineInputBorder(),
+                  ),
                   validator: (v) {
                     final email = (v ?? '').trim();
                     if (email.isEmpty) return 'Enter your email';
-                    if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
+                    if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+                        .hasMatch(email)) {
                       return 'Enter a valid email, like aline@gmail.com';
                     }
                     return null;
@@ -101,7 +110,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   controller: _password,
                   obscureText: true,
                   decoration: const InputDecoration(
-                      labelText: 'Password', border: OutlineInputBorder()),
+                    labelText: 'Password',
+                    border: OutlineInputBorder(),
+                  ),
                   validator: (v) =>
                       (v ?? '').length < 6 ? 'At least 6 characters' : null,
                 ),

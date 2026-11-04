@@ -1,8 +1,9 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../models/txn.dart';
+import '../state/wallet_state.dart';
 import 'txn_form.dart';
 
 class WalletScreen extends StatefulWidget {
@@ -13,14 +14,18 @@ class WalletScreen extends StatefulWidget {
 }
 
 class _WalletScreenState extends State<WalletScreen> {
-  String _filter = 'All'; // All, IN or OUT
-
-  Future<void> _delete(BuildContext context, Txn txn, List<Txn> all) async {
+  Future<void> _delete(BuildContext context, Txn txn) async {
+    final wallet = context.read<WalletState>();
     // Refuse a delete that would make the balance go below 0 in the history.
-    final oldestFirst = all.reversed.where((t) => t.id != txn.id).toList();
+    final oldestFirst = wallet.transactions.reversed
+        .where((t) => t.id != txn.id)
+        .toList();
     if (!historyStaysPositive(oldestFirst)) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Cannot delete: the balance would go below 0')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cannot delete: the balance would go below 0'),
+        ),
+      );
       return;
     }
     final sure = await showDialog<bool>(
@@ -30,77 +35,76 @@ class _WalletScreenState extends State<WalletScreen> {
         content: Text(txn.description),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
           TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Delete')),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
         ],
       ),
     );
     if (sure == true) {
-      await myTransactions().doc(txn.id).delete();
+      await wallet.remove(txn);
     }
+  }
+
+  void _openForm(BuildContext context, Txn? txn) {
+    final wallet = context.read<WalletState>();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChangeNotifierProvider<WalletState>.value(
+          value: wallet,
+          child: TxnForm(txn: txn),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      // Live: delivers the list now, and again at every change.
-      stream: myTransactions().orderBy('createdAt', descending: true).snapshots(),
-      builder: (context, snapshot) {
-        final loaded = snapshot.hasData;
-        final txns = loaded ? snapshot.data!.docs.map(Txn.fromDoc).toList() : <Txn>[];
-        // Computed every time, never saved.
-        final balance = computeBalance(txns);
-        final totalIn = txns.where((t) => t.isIn).fold<int>(0, (s, t) => s + t.amount);
-        final totalOut = txns.where((t) => !t.isIn).fold<int>(0, (s, t) => s + t.amount);
-        final shown = _filter == 'IN'
-            ? txns.where((t) => t.isIn).toList()
-            : _filter == 'OUT'
-                ? txns.where((t) => !t.isIn).toList()
-                : txns;
+    final user = FirebaseAuth.instance.currentUser!;
+    final wallet = context.watch<WalletState>();
 
-        return Scaffold(
-          appBar: AppBar(
-            title: const Text('MoMo Wallet'),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.logout),
-                tooltip: 'Log out',
-                onPressed: () => FirebaseAuth.instance.signOut(),
-              ),
-            ],
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('MoMo Wallet'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            tooltip: 'Log out',
+            onPressed: () => FirebaseAuth.instance.signOut(),
           ),
-          floatingActionButton: loaded
-              ? FloatingActionButton(
-                  onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => TxnForm(balance: balance))),
-                  child: const Icon(Icons.add),
-                )
-              : null,
-          body: _body(context, snapshot, txns, shown, balance, totalIn, totalOut),
-        );
-      },
+        ],
+      ),
+      floatingActionButton: wallet.loading
+          ? null
+          : FloatingActionButton(
+              onPressed: () => _openForm(context, null),
+              child: const Icon(Icons.add),
+            ),
+      body: _body(context, wallet, user),
     );
   }
 
-  Widget _body(BuildContext context, AsyncSnapshot<QuerySnapshot<Map<String, dynamic>>> snapshot,
-      List<Txn> txns, List<Txn> shown, int balance, int totalIn, int totalOut) {
-    if (snapshot.hasError) {
+  Widget _body(BuildContext context, WalletState wallet, User user) {
+    if (wallet.error != null) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Text('Could not load your transactions.\n${snapshot.error}',
-              textAlign: TextAlign.center),
+          child: Text(wallet.error!, textAlign: TextAlign.center),
         ),
       );
     }
-    if (!snapshot.hasData) {
+    if (wallet.loading) {
       return const Center(child: CircularProgressIndicator());
     }
+
+    final txns = wallet.transactions;
+    final shown = wallet.visible;
+
     return Column(
       children: [
         Card(
@@ -109,13 +113,20 @@ class _WalletScreenState extends State<WalletScreen> {
             padding: const EdgeInsets.all(20),
             child: Column(
               children: [
-                Text(FirebaseAuth.instance.currentUser?.email ?? '',
-                    style: const TextStyle(color: Colors.grey)),
+                Text(
+                  user.email ?? '',
+                  style: const TextStyle(color: Colors.grey),
+                ),
                 const SizedBox(height: 8),
-                Text('$balance RWF',
-                    style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
+                Text(
+                  '${wallet.balance} RWF',
+                  style: const TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 const SizedBox(height: 8),
-                Text('In: $totalIn   ·   Out: $totalOut'),
+                Text('In: ${wallet.totalIn}   ·   Out: ${wallet.totalOut}'),
               ],
             ),
           ),
@@ -126,14 +137,19 @@ class _WalletScreenState extends State<WalletScreen> {
             for (final f in ['All', 'IN', 'OUT'])
               ChoiceChip(
                 label: Text(f),
-                selected: _filter == f,
-                onSelected: (_) => setState(() => _filter = f),
+                selected: wallet.filter == f.toLowerCase(),
+                onSelected: (_) =>
+                    context.read<WalletState>().setFilter(f.toLowerCase()),
               ),
           ],
         ),
         Expanded(
-          child: shown.isEmpty
-              ? const Center(child: Text('No transactions yet'))
+          child: txns.isEmpty
+              ? const Center(
+                  child: Text('No transactions yet. Tap + to add one.'),
+                )
+              : shown.isEmpty
+              ? const Center(child: Text('Nothing matches this filter.'))
               : ListView.builder(
                   itemCount: shown.length,
                   itemBuilder: (context, index) {
@@ -147,15 +163,12 @@ class _WalletScreenState extends State<WalletScreen> {
                       trailing: Text(
                         '${t.isIn ? '+' : '-'}${t.amount}',
                         style: TextStyle(
-                            color: t.isIn ? Colors.green : Colors.red,
-                            fontWeight: FontWeight.bold),
+                          color: t.isIn ? Colors.green : Colors.red,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                      // Tap = edit, long press = delete.
-                      onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => TxnForm(txn: t, balance: balance))),
-                      onLongPress: () => _delete(context, t, txns),
+                      onTap: () => _openForm(context, t),
+                      onLongPress: () => _delete(context, t),
                     );
                   },
                 ),
